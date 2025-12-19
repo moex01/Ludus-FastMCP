@@ -364,8 +364,9 @@ def interactive_setup() -> int:
 
                         async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
                             try:
+                                # Use /user endpoint (not /api/user/whoami - Ludus doesn't use /api/ prefix)
                                 response = await client.get(
-                                    f"{config['LUDUS_API_URL']}/api/user/whoami",
+                                    f"{config['LUDUS_API_URL']}/user",
                                     headers={"X-API-KEY": config['LUDUS_API_KEY']}
                                 )
                                 if response.status_code == 200:

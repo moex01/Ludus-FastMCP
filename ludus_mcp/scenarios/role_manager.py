@@ -164,12 +164,133 @@ class RoleManager:
                 )
                 self.allow_ssh_install = False
 
+    async def get_installed_roles(self) -> list[dict]:
+        """Get list of all installed roles.
+
+        Prefers using the ludus CLI with --url for reliable remote checking.
+        Falls back to HTTP API if CLI is not available.
+
+        Returns:
+            List of role dictionaries with name, version, and global status
+        """
+        import shutil
+        import subprocess
+        from ludus_mcp.utils.config import get_settings
+
+        settings = get_settings()
+
+        # Prefer ludus CLI if available (works both locally and remotely with --url)
+        ludus_cli = shutil.which("ludus")
+        if ludus_cli and settings.ludus_api_key:
+            try:
+                env = os.environ.copy()
+                env["LUDUS_API_KEY"] = settings.ludus_api_key
+
+                result = subprocess.run(
+                    ["ludus", "ansible", "roles", "list", "--url", settings.ludus_api_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env
+                )
+
+                if result.returncode == 0:
+                    output = result.stdout + result.stderr
+                    roles = []
+                    # Parse the table output
+                    # Format: |  NAME  | VERSION | GLOBAL |
+                    for line in output.split('\n'):
+                        if '|' in line:
+                            parts = [p.strip() for p in line.split('|') if p.strip()]
+                            # Skip header row and separator rows
+                            if len(parts) >= 3 and parts[0] not in ('NAME', '+', '-'):
+                                if not parts[0].startswith('-') and not parts[0].startswith('+'):
+                                    roles.append({
+                                        "name": parts[0],
+                                        "version": parts[1] if len(parts) > 1 else None,
+                                        "global": parts[2].lower() == "true" if len(parts) > 2 else False,
+                                        "type": "role",
+                                    })
+                    return roles
+            except subprocess.TimeoutExpired:
+                logger.warning("Timeout listing roles via CLI, falling back to API")
+            except Exception as e:
+                logger.warning(f"Error listing roles via CLI: {e}, falling back to API")
+
+        # Fallback to HTTP API
+        try:
+            ansible_resources = await self.client.list_ansible_resources()
+            if isinstance(ansible_resources, dict):
+                roles = ansible_resources.get("roles", [])
+            elif isinstance(ansible_resources, list):
+                roles = ansible_resources
+            else:
+                roles = []
+
+            # Normalize role format
+            formatted_roles = []
+            for role in roles:
+                if isinstance(role, str):
+                    formatted_roles.append({"name": role, "type": "role"})
+                elif isinstance(role, dict):
+                    formatted_roles.append({
+                        "name": role.get("Name") or role.get("name", "unknown"),
+                        "version": role.get("Version") or role.get("version"),
+                        "type": role.get("Type") or role.get("type", "role"),
+                        "global": role.get("Global") or role.get("global", False),
+                    })
+            return formatted_roles
+        except Exception as e:
+            logger.warning(f"Error listing roles: {e}")
+            return []
+
     async def check_role_installed(self, role_name: str) -> bool:
         """Check if a role is installed.
-        
+
+        Prefers using the ludus CLI with --url for reliable remote checking.
+        Falls back to HTTP API if CLI is not available.
+
         The API returns roles as a list of dicts with capital "Name" key:
         [{"Name": "role-name", "Version": "...", "Type": "role", "Global": False}, ...]
         """
+        import shutil
+        import subprocess
+        from ludus_mcp.utils.config import get_settings
+
+        settings = get_settings()
+
+        # Prefer ludus CLI if available (works both locally and remotely with --url)
+        ludus_cli = shutil.which("ludus")
+        if ludus_cli and settings.ludus_api_key:
+            try:
+                env = os.environ.copy()
+                env["LUDUS_API_KEY"] = settings.ludus_api_key
+
+                result = subprocess.run(
+                    ["ludus", "ansible", "roles", "list", "--url", settings.ludus_api_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env
+                )
+
+                if result.returncode == 0:
+                    output = result.stdout + result.stderr
+                    # Parse the table output - role names are in the first column
+                    # Format: |  role-name  | version | global |
+                    for line in output.split('\n'):
+                        if '|' in line and role_name in line:
+                            # Extract the role name from the table row
+                            parts = [p.strip() for p in line.split('|') if p.strip()]
+                            if parts and parts[0] == role_name:
+                                return True
+                    return False
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Timeout checking role {role_name} via CLI, falling back to API")
+            except Exception as e:
+                logger.warning(f"Error checking role via CLI: {e}, falling back to API")
+
+        # Fallback to HTTP API
         try:
             ansible_resources = await self.client.list_ansible_resources()
             # API returns roles as a list or dict, check both formats
@@ -179,7 +300,7 @@ class RoleManager:
                 roles = ansible_resources
             else:
                 roles = []
-            
+
             # Check if role exists (could be string or dict)
             for role in roles:
                 if isinstance(role, str):

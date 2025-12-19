@@ -567,35 +567,35 @@ class LudusAPIClient:
 
         return await self._request(
             "POST",
-            f"/api/ranges/{range_id}/hosts",
+            f"/ranges/{range_id}/hosts",
             json_data=payload,
         )
 
     async def get_host(self, range_id: str, host_id: str) -> dict[str, Any]:
         """Get a host by ID."""
-        return await self._request("GET", f"/api/ranges/{range_id}/hosts/{host_id}")
+        return await self._request("GET", f"/ranges/{range_id}/hosts/{host_id}")
 
     async def list_hosts(self, range_id: str) -> list[dict[str, Any]]:
         """List all hosts in a range."""
-        result = await self._request("GET", f"/api/ranges/{range_id}/hosts")
+        result = await self._request("GET", f"/ranges/{range_id}/hosts")
         return result if isinstance(result, list) else []
 
     async def start_host(self, range_id: str, host_id: str) -> dict[str, Any]:
         """Start a host."""
         return await self._request(
-            "POST", f"/api/ranges/{range_id}/hosts/{host_id}/start"
+            "POST", f"/ranges/{range_id}/hosts/{host_id}/start"
         )
 
     async def stop_host(self, range_id: str, host_id: str) -> dict[str, Any]:
         """Stop a host."""
         return await self._request(
-            "POST", f"/api/ranges/{range_id}/hosts/{host_id}/stop"
+            "POST", f"/ranges/{range_id}/hosts/{host_id}/stop"
         )
 
     async def delete_host(self, range_id: str, host_id: str) -> dict[str, Any]:
         """Delete a host."""
         return await self._request(
-            "DELETE", f"/api/ranges/{range_id}/hosts/{host_id}"
+            "DELETE", f"/ranges/{range_id}/hosts/{host_id}"
         )
 
     # Snapshot Management (Ludus API format)

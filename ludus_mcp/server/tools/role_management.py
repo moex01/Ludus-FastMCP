@@ -26,6 +26,9 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
     async def list_installed_roles() -> dict:
         """List all installed Ansible roles on the Ludus server.
 
+        Uses the ludus CLI with --url when available for reliable remote access.
+        Falls back to HTTP API if CLI is not available.
+
         Returns:
             Dictionary with list of installed roles and their details
 
@@ -33,43 +36,16 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
             result = await list_installed_roles()
             # Returns: {"installed_roles": [...], "count": 15}
         """
-        # Initialize RoleManager with SSH configuration from environment
-        role_manager = RoleManager(
-            client,
-            ssh_host=os.getenv("LUDUS_SSH_HOST"),
-            ssh_user=os.getenv("LUDUS_SSH_USER"),
-            ssh_key_path=os.getenv("LUDUS_SSH_KEY_PATH"),
-            ssh_password=os.getenv("LUDUS_SSH_PASSWORD"),
-            allow_ssh_install=os.getenv("LUDUS_ALLOW_SSH_INSTALL", "false").lower() == "true",
-        )
+        # Initialize RoleManager (no SSH needed for listing)
+        role_manager = RoleManager(client)
         try:
-            ansible_resources = await client.list_ansible_resources()
-            
-            # API returns roles as a list or dict, handle both formats
-            if isinstance(ansible_resources, dict):
-                roles = ansible_resources.get("roles", [])
-            elif isinstance(ansible_resources, list):
-                roles = ansible_resources
-            else:
-                roles = []
-            
-            # Format role information
-            formatted_roles = []
-            for role in roles:
-                if isinstance(role, str):
-                    formatted_roles.append({"name": role, "type": "unknown"})
-                elif isinstance(role, dict):
-                    formatted_roles.append({
-                        "name": role.get("Name") or role.get("name", "unknown"),
-                        "version": role.get("Version") or role.get("version"),
-                        "type": role.get("Type") or role.get("type", "role"),
-                        "global": role.get("Global") or role.get("global", False),
-                    })
-            
+            # Use the new get_installed_roles method which prefers CLI
+            roles = await role_manager.get_installed_roles()
+
             return format_tool_response({
                 "status": "success",
-                "installed_roles": formatted_roles,
-                "count": len(formatted_roles),
+                "installed_roles": roles,
+                "count": len(roles),
             })
         except Exception as e:
             return format_tool_response({
@@ -81,8 +57,8 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
     async def check_role_installed(role_name: str) -> dict:
         """Check if a specific Ansible role is installed.
 
-        This tool works with the MCP server to check role installation status.
-        You can use this before deploying scenarios to ensure required roles are available.
+        Uses the ludus CLI with --url when available for reliable remote access.
+        Falls back to HTTP API if CLI is not available. No SSH required.
 
         Args:
             role_name: Name of the role to check (e.g., "ludus-ad-content", "badsectorlabs.ludus_adcs")
@@ -93,20 +69,13 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
         Example:
             # Check if a role is installed
             result = await check_role_installed(role_name="ludus-ad-content")
-            
+
             # If not installed, use install_role() to install it
             if not result.get("installed"):
                 await install_role(role_name="ludus-ad-content")
         """
-        # Initialize RoleManager with SSH configuration from environment
-        role_manager = RoleManager(
-            client,
-            ssh_host=os.getenv("LUDUS_SSH_HOST"),
-            ssh_user=os.getenv("LUDUS_SSH_USER"),
-            ssh_key_path=os.getenv("LUDUS_SSH_KEY_PATH"),
-            ssh_password=os.getenv("LUDUS_SSH_PASSWORD"),
-            allow_ssh_install=os.getenv("LUDUS_ALLOW_SSH_INSTALL", "false").lower() == "true",
-        )
+        # Initialize RoleManager (no SSH needed for checking)
+        role_manager = RoleManager(client)
         try:
             is_installed = await role_manager.check_role_installed(role_name)
             return format_tool_response({
@@ -540,7 +509,8 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
     async def get_role_info(role_name: str) -> dict:
         """Get information about a specific role, including installation method and requirements.
 
-        This MCP tool helps users understand how to install a role and what's required.
+        Uses the ludus CLI with --url when available for reliable remote access.
+        No SSH required for checking role information.
 
         Args:
             role_name: Name of the role to get information about
@@ -551,18 +521,12 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
         Example:
             # Get info about a Galaxy role
             info = await get_role_info(role_name="badsectorlabs.ludus_adcs")
-            
+
             # Get info about a directory-based role
             info = await get_role_info(role_name="ludus-ad-vulns")
         """
-        role_manager = RoleManager(
-            client,
-            ssh_host=os.getenv("LUDUS_SSH_HOST"),
-            ssh_user=os.getenv("LUDUS_SSH_USER"),
-            ssh_key_path=os.getenv("LUDUS_SSH_KEY_PATH"),
-            ssh_password=os.getenv("LUDUS_SSH_PASSWORD"),
-            allow_ssh_install=os.getenv("LUDUS_ALLOW_SSH_INSTALL", "false").lower() == "true",
-        )
+        # Initialize RoleManager (no SSH needed for info checking)
+        role_manager = RoleManager(client)
         
         try:
             # Check if it's a directory-based role
@@ -659,14 +623,8 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
             - aleemladha.ludus_wazuh_agent: Wazuh agent
             - geerlingguy.docker: Docker installation
         """
-        role_manager = RoleManager(
-            client,
-            ssh_host=os.getenv("LUDUS_SSH_HOST"),
-            ssh_user=os.getenv("LUDUS_SSH_USER"),
-            ssh_key_path=os.getenv("LUDUS_SSH_KEY_PATH"),
-            ssh_password=os.getenv("LUDUS_SSH_PASSWORD"),
-            allow_ssh_install=os.getenv("LUDUS_ALLOW_SSH_INSTALL", "false").lower() == "true",
-        )
+        # Initialize RoleManager (no SSH needed for Galaxy roles)
+        role_manager = RoleManager(client)
 
         try:
             # Check if already installed
@@ -909,15 +867,8 @@ def create_role_management_tools(client: LudusAPIClient) -> FastMCP:
         Example:
             result = await list_role_repositories()
         """
-        # Initialize RoleManager with SSH configuration from environment
-        role_manager = RoleManager(
-            client,
-            ssh_host=os.getenv("LUDUS_SSH_HOST"),
-            ssh_user=os.getenv("LUDUS_SSH_USER"),
-            ssh_key_path=os.getenv("LUDUS_SSH_KEY_PATH"),
-            ssh_password=os.getenv("LUDUS_SSH_PASSWORD"),
-            allow_ssh_install=os.getenv("LUDUS_ALLOW_SSH_INSTALL", "false").lower() == "true",
-        )
+        # Initialize RoleManager (no SSH needed for listing)
+        role_manager = RoleManager(client)
         try:
             repositories = []
             for role_name, repo_info in role_manager.ROLE_REPOSITORIES.items():

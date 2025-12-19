@@ -1,5 +1,6 @@
 """Configuration management using Pydantic Settings."""
 
+import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -19,6 +20,31 @@ def _get_env_files() -> tuple[str, ...]:
         env_files.append(str(cwd_env))
 
     return tuple(env_files) if env_files else (".env",)
+
+
+def _load_env_files_to_environ():
+    """Manually load .env files into os.environ to ensure they're available.
+
+    This is needed because pydantic-settings evaluates env_file at class definition
+    time, but the MCP server may be started from different directories.
+    """
+    from dotenv import dotenv_values
+
+    # Load from home config first (lower priority)
+    home_env = Path.home() / ".ludus-fastmcp" / ".env"
+    if home_env.exists():
+        values = dotenv_values(home_env)
+        for key, value in values.items():
+            if key not in os.environ and value is not None:
+                os.environ[key] = value
+
+    # Load from cwd (higher priority, will override)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        values = dotenv_values(cwd_env)
+        for key, value in values.items():
+            if key not in os.environ and value is not None:
+                os.environ[key] = value
 
 
 class Settings(BaseSettings):
@@ -61,5 +87,7 @@ def get_settings() -> Settings:
     """Get or create the global settings instance."""
     global _settings
     if _settings is None:
+        # Load .env files into environment before creating settings
+        _load_env_files_to_environ()
         _settings = Settings()
     return _settings
