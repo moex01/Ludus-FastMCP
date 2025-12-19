@@ -89,6 +89,16 @@ Create a snapshot named "pre-attack" for all VMs
 Build a lab with 2 domain controllers and 5 workstations
 ```
 
+Examples of using Ludus-FastMCP with grok code through Opencode.
+
+![img](docs/images/health-check.png)
+
+![img](docs/images/scenarios.png)
+
+![img](docs/images/templates.png)
+
+![img](docs/images/range-check.png)
+
 ## Documentation
 
 | Document | Description |
