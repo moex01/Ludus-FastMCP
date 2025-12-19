@@ -504,6 +504,8 @@ def create_core_tools(client: LudusAPIClient) -> FastMCP:
     async def health_check() -> dict:
         """Check health of Ludus MCP server and Ludus API connectivity.
 
+        Uses the ludus CLI if available for more reliable connectivity testing.
+
         Returns:
             Health status including:
             - Server status (healthy/unhealthy)
@@ -511,51 +513,145 @@ def create_core_tools(client: LudusAPIClient) -> FastMCP:
             - Ludus API reachability
             - Connection latency
             - Number of available tools
-            - Rate limiter stats (if available)
+            - Configuration sources
+            - Ludus server version (if connected)
         """
         import time
-        from ludus_mcp.exceptions import LudusConnectionError, LudusTimeoutError
+        import shutil
+        import subprocess
+        import os
+        from pathlib import Path
         from importlib.metadata import version
+        from ludus_mcp.utils.config import get_settings
 
         start_time = time.time()
         try:
             actual_version = version("ludus-fastmcp")
         except Exception:
-            actual_version = "0.4.2"  # Fallback version
-            
+            actual_version = "1.0.0"  # Fallback version
+
+        # Get current settings for debug info
+        settings = get_settings()
+
+        # Check which .env files exist
+        env_files_found = []
+        home_env = Path.home() / ".ludus-fastmcp" / ".env"
+        cwd_env = Path.cwd() / ".env"
+        if home_env.exists():
+            env_files_found.append(str(home_env))
+        if cwd_env.exists():
+            env_files_found.append(str(cwd_env))
+
         health_info = {
             "status": "unknown",
             "mcp_version": actual_version,
-            "tools_available": 254,  # Actual count of MCP tools
+            "tools_available": 157,
             "timestamp": time.time(),
+            "config": {
+                "api_url": settings.ludus_api_url,
+                "api_key_set": bool(settings.ludus_api_key),
+                "api_key_preview": f"{'*' * 10}...{settings.ludus_api_key[-8:]}" if settings.ludus_api_key else "NOT SET",
+                "ssl_verify": settings.ludus_ssl_verify,
+                "env_files_found": env_files_found,
+                "cwd": str(Path.cwd()),
+            },
         }
 
-        try:
-            # Test Ludus API connection with a lightweight call
-            await client.get_host_info()
+        # Prefer ludus CLI for health check if available
+        ludus_cli = shutil.which("ludus")
+        if ludus_cli and settings.ludus_api_key:
+            try:
+                env = os.environ.copy()
+                env["LUDUS_API_KEY"] = settings.ludus_api_key
 
-            latency_ms = round((time.time() - start_time) * 1000, 2)
+                # Use 'ludus version' - lightweight command that verifies connectivity
+                result = subprocess.run(
+                    ["ludus", "version", "--url", settings.ludus_api_url],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    env=env
+                )
 
-            # Get rate limiter stats if available
-            rate_stats = {}
-            if hasattr(client, "rate_limiter"):
-                rate_stats = client.rate_limiter.get_current_usage()
+                latency_ms = round((time.time() - start_time) * 1000, 2)
 
-            health_info.update(
-                {
+                if result.returncode == 0:
+                    output = (result.stdout + result.stderr).strip()
+                    # Parse versions from output
+                    # Example: "[INFO]  Ludus client 1.11.5+b9fe95c"
+                    #          "[INFO]  Ludus Server 1.11.4+b1da5c6 - community license"
+                    server_version = None
+                    client_version = None
+                    license_type = None
+                    for line in output.split('\n'):
+                        if 'Ludus Server' in line:
+                            parts = line.split('Ludus Server')[-1].strip()
+                            server_version = parts.split()[0] if parts else None
+                            if ' - ' in parts:
+                                license_type = parts.split(' - ')[-1].strip()
+                        elif 'Ludus client' in line:
+                            client_version = line.split('Ludus client')[-1].strip()
+
+                    health_info.update({
+                        "status": "healthy",
+                        "ludus_api": {
+                            "reachable": True,
+                            "latency_ms": latency_ms,
+                            "base_url": settings.ludus_api_url,
+                            "server_version": server_version,
+                            "client_version": client_version,
+                            "license": license_type,
+                            "method": "ludus_cli",
+                        },
+                    })
+                else:
+                    error_msg = result.stderr.strip() or result.stdout.strip()
+                    health_info.update({
+                        "status": "unhealthy",
+                        "error": error_msg[:200],
+                        "ludus_api": {
+                            "reachable": False,
+                            "base_url": settings.ludus_api_url,
+                            "method": "ludus_cli",
+                        },
+                    })
+            except subprocess.TimeoutExpired:
+                health_info.update({
+                    "status": "unhealthy",
+                    "error": "Connection timed out",
+                    "ludus_api": {"reachable": False, "base_url": settings.ludus_api_url},
+                })
+            except Exception as e:
+                health_info.update({
+                    "status": "unhealthy",
+                    "error": f"CLI error: {str(e)}",
+                    "error_type": type(e).__name__,
+                })
+        else:
+            # Fallback to httpx client
+            try:
+                from ludus_mcp.exceptions import LudusConnectionError, LudusTimeoutError
+
+                await client.get_host_info()
+                latency_ms = round((time.time() - start_time) * 1000, 2)
+
+                rate_stats = {}
+                if hasattr(client, "rate_limiter"):
+                    rate_stats = client.rate_limiter.get_current_usage()
+
+                health_info.update({
                     "status": "healthy",
                     "ludus_api": {
                         "reachable": True,
                         "latency_ms": latency_ms,
                         "base_url": client.base_url,
+                        "method": "httpx_client",
                     },
                     "rate_limiter": rate_stats,
-                }
-            )
+                })
 
-        except (LudusConnectionError, LudusTimeoutError) as e:
-            health_info.update(
-                {
+            except (LudusConnectionError, LudusTimeoutError) as e:
+                health_info.update({
                     "status": "unhealthy",
                     "error": str(e),
                     "error_type": type(e).__name__,
@@ -563,17 +659,14 @@ def create_core_tools(client: LudusAPIClient) -> FastMCP:
                         "reachable": False,
                         "base_url": client.base_url,
                     },
-                }
-            )
+                })
 
-        except Exception as e:
-            health_info.update(
-                {
+            except Exception as e:
+                health_info.update({
                     "status": "unhealthy",
                     "error": f"Unexpected error: {str(e)}",
                     "error_type": type(e).__name__,
-                }
-            )
+                })
 
         return health_info
 

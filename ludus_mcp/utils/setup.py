@@ -17,13 +17,13 @@ def prompt_input(prompt: str, default: str | None = None, secret: bool = False) 
         prompt_text = f"{prompt} [{default}]: "
     else:
         prompt_text = f"{prompt}: "
-    
+
     if secret:
         import getpass
         value = getpass.getpass(prompt_text)
     else:
         value = input(prompt_text).strip()
-    
+
     return value if value else (default or "")
 
 
@@ -31,10 +31,10 @@ def prompt_yes_no(prompt: str, default: bool = True) -> bool:
     """Prompt user for yes/no input."""
     default_text = "Y/n" if default else "y/N"
     response = input(f"{prompt} [{default_text}]: ").strip().lower()
-    
+
     if not response:
         return default
-    
+
     return response in ("y", "yes")
 
 
@@ -54,14 +54,14 @@ def interactive_setup() -> int:
     print("Ludus MCP Configuration Setup")
     print("=" * 60)
     print()
-    
+
     settings = get_settings()
     config: dict[str, Any] = {}
-    
+
     # Ludus API Configuration
     print("Ludus API Configuration")
     print("-" * 60)
-    
+
     api_url = prompt_input(
         "Ludus API URL",
         default=settings.ludus_api_url or "http://localhost:8080"
@@ -70,7 +70,7 @@ def interactive_setup() -> int:
         print("ERROR: URL must start with http:// or https://", file=sys.stderr)
         return 1
     config["LUDUS_API_URL"] = api_url
-    
+
     api_key = prompt_input(
         "Ludus API Key",
         default=settings.ludus_api_key or "",
@@ -79,17 +79,17 @@ def interactive_setup() -> int:
     if not api_key:
         print("WARNING: API key is required for most operations", file=sys.stderr)
     config["LUDUS_API_KEY"] = api_key
-    
+
     print()
-    
+
     # LLM Configuration (Optional)
     print("LLM Configuration (Optional)")
     print("-" * 60)
     print("Press Enter to skip LLM configuration (fallback parser will be used)")
     print()
-    
+
     use_llm = prompt_yes_no("Do you want to configure an LLM?", default=False)
-    
+
     if use_llm:
         print("\nSupported providers:")
         print("  1. llama-cpp (Local: Mistral 7B, Llama, etc.) - Auto-install available")
@@ -99,19 +99,19 @@ def interactive_setup() -> int:
         print("  5. anthropic (Claude: Claude 3.5 Sonnet, Claude 3 Opus)")
         print("  6. google (Gemini: Gemini 1.5 Pro, Gemini Pro)")
         print()
-        
+
         provider_choice = prompt_input(
             "LLM Provider (llama-cpp, gpt4all, ollama, openai, anthropic, google)",
             default=getattr(settings, "llm_provider_type", None) or "llama-cpp"
         )
-        
+
         valid_providers = ["llama-cpp", "gpt4all", "ollama", "openai", "anthropic", "google"]
         if provider_choice not in valid_providers:
             print(f"WARNING: Invalid provider, defaulting to llama-cpp", file=sys.stderr)
             provider_choice = "llama-cpp"
-        
+
         config["LLM_PROVIDER_TYPE"] = provider_choice
-        
+
         # Cloud providers need API key
         if provider_choice in ["openai", "anthropic", "google"]:
             api_key = prompt_input(
@@ -122,7 +122,7 @@ def interactive_setup() -> int:
             if not api_key:
                 print(f"WARNING: API key is required for {provider_choice}", file=sys.stderr)
             config["LLM_API_KEY"] = api_key
-            
+
             # Model selection for cloud providers (latest models)
             default_models = {
                 "openai": "gpt-4o",
@@ -134,7 +134,7 @@ def interactive_setup() -> int:
                 default=getattr(settings, "llm_model", None) or default_models.get(provider_choice, "")
             )
             config["LLM_MODEL"] = model
-        
+
         # Local providers need model path or Ollama config
         elif provider_choice == "ollama":
             base_url = prompt_input(
@@ -142,36 +142,36 @@ def interactive_setup() -> int:
                 default=getattr(settings, "llm_ollama_base_url", None) or "http://localhost:11434"
             )
             config["LLM_OLLAMA_BASE_URL"] = base_url
-            
+
             model = prompt_input(
                 "Ollama model name",
                 default=getattr(settings, "llm_model", None) or "mistral"
             )
             config["LLM_MODEL"] = model
-        
+
         else:  # llama-cpp or gpt4all
             model_path = prompt_input(
                 "LLM Model Path",
                 default=getattr(settings, "llm_model_path", None) or ""
             )
             if model_path and not validate_file_path(model_path):
-                print(f"\n⚠ Model file not found: {model_path}")
+                print(f"\n[WARN] Model file not found: {model_path}")
                 print()
-                
+
                 # Offer to install the model
                 try:
                     from .model_installer import ModelInstaller
-                    
+
                     installer = ModelInstaller(model_path, interactive=True)
                     results = installer.run_checks()
-                    
+
                     print("Running model installation checks...")
                     print("-" * 60)
                     for message in results["messages"]:
                         print(f"  {message}")
                     print("-" * 60)
                     print()
-                    
+
                     if results["checks_passed"]:
                         if results.get("model_info"):
                             print("Model Information:")
@@ -179,12 +179,12 @@ def interactive_setup() -> int:
                             print(f"  Size: ~{results['model_info']['size_gb']} GB")
                             print(f"  Description: {results['model_info']['description']}")
                             print()
-                        
+
                         install_model = prompt_yes_no(
                             "Would you like to download and install this model now?",
                             default=True
                         )
-                        
+
                         if install_model:
                             print()
                             if installer.install_model_interactive():
@@ -193,16 +193,16 @@ def interactive_setup() -> int:
                                 # Model path is already set, continue
                             else:
                                 print()
-                                print("⚠ Model installation failed or cancelled")
+                                print("[WARN] Model installation failed or cancelled")
                                 if not prompt_yes_no("Continue without model?", default=False):
                                     model_path = ""
                         else:
-                            print("ℹ Skipping model installation. You can install it later with:")
+                            print("[INFO] Skipping model installation. You can install it later with:")
                             print(f"   python3 scripts/install_model.py {model_path}")
                             if not prompt_yes_no("Continue without model?", default=False):
                                 model_path = ""
                     else:
-                        print("⚠ Pre-installation checks failed. Cannot install model automatically.")
+                        print("[WARN] Pre-installation checks failed. Cannot install model automatically.")
                         print()
                         print("Please fix the following issues:")
                         if not results.get("has_disk_space", True):
@@ -218,7 +218,7 @@ def interactive_setup() -> int:
                         if not prompt_yes_no("Continue without model?", default=False):
                             model_path = ""
                 except ImportError:
-                    print("⚠ Model installer not available")
+                    print("[WARN] Model installer not available")
                     if not prompt_yes_no("Continue anyway?", default=False):
                         model_path = ""
                 except Exception as e:
@@ -226,7 +226,7 @@ def interactive_setup() -> int:
                     if not prompt_yes_no("Continue anyway?", default=False):
                         model_path = ""
             config["LLM_MODEL_PATH"] = model_path
-            
+
             if model_path:
                 context_size = prompt_input(
                     "Context Size",
@@ -236,7 +236,7 @@ def interactive_setup() -> int:
                     config["LLM_CONTEXT_SIZE"] = int(context_size)
                 except ValueError:
                     config["LLM_CONTEXT_SIZE"] = 4096
-        
+
         # Common settings
         temperature = prompt_input(
             "Temperature (0.0-1.0)",
@@ -246,9 +246,9 @@ def interactive_setup() -> int:
             config["LLM_TEMPERATURE"] = float(temperature)
         except ValueError:
             config["LLM_TEMPERATURE"] = 0.7
-    
+
     print()
-    
+
     # Logging Configuration
     print("Logging Configuration")
     print("-" * 60)
@@ -259,13 +259,13 @@ def interactive_setup() -> int:
     if log_level.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         log_level = "INFO"
     config["LOG_LEVEL"] = log_level.upper()
-    
+
     print()
-    
+
     # Save Configuration
     print("=" * 60)
     save_to_file = prompt_yes_no("Save configuration to .env file?", default=True)
-    
+
     if save_to_file:
         env_file = Path(".env")
         if env_file.exists():
@@ -273,7 +273,7 @@ def interactive_setup() -> int:
             if not overwrite:
                 print("Configuration not saved.")
                 return 0
-        
+
         try:
             with open(env_file, "w") as f:
                 f.write("# Ludus MCP Configuration\n")
@@ -284,7 +284,7 @@ def interactive_setup() -> int:
                         if "\n" in str(value) or '"' in str(value):
                             value = repr(str(value))
                         f.write(f"{key}={value}\n")
-            
+
             print(f"[OK] Configuration saved to {env_file.absolute()}")
         except Exception as e:
             print(f"ERROR: Failed to save configuration: {e}", file=sys.stderr)
@@ -297,56 +297,104 @@ def interactive_setup() -> int:
             if value:
                 print(f"export {key}={value}")
         print()
-    
+
     # Test Configuration
     print("=" * 60)
     test_config = prompt_yes_no("Test configuration now?", default=True)
-    
+
     if test_config:
         print("\nTesting configuration...")
-        
+
         # Test API connection
         if config.get("LUDUS_API_URL") and config.get("LUDUS_API_KEY"):
-            try:
-                import httpx
-                import asyncio
-                
-                async def test_connection():
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        try:
-                            # Try a simple API endpoint (ranges list is usually available)
-                            response = await client.get(
-                                f"{config['LUDUS_API_URL']}/api/ranges",
-                                headers={"Authorization": f"Bearer {config['LUDUS_API_KEY']}"}
-                            )
-                            if response.status_code == 200:
-                                print("[OK] API connection successful")
-                                return True
-                            elif response.status_code == 401:
-                                print("⚠ API connection failed: Invalid API key")
+            import subprocess
+            import shutil
+
+            # Prefer using ludus CLI if available (more reliable)
+            ludus_cli = shutil.which("ludus")
+            if ludus_cli:
+                try:
+                    # Set API key in environment and test with ludus CLI
+                    env = os.environ.copy()
+                    env["LUDUS_API_KEY"] = config["LUDUS_API_KEY"]
+
+                    # Use 'ludus version' - lightweight command that verifies connectivity
+                    result = subprocess.run(
+                        ["ludus", "version", "--url", config["LUDUS_API_URL"]],
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                        env=env
+                    )
+
+                    if result.returncode == 0:
+                        output = (result.stdout + result.stderr).strip()
+                        # Parse server version from output
+                        server_version = None
+                        for line in output.split('\n'):
+                            if 'Ludus Server' in line:
+                                parts = line.split('Ludus Server')[-1].strip()
+                                server_version = parts.split()[0] if parts else None
+                                break
+                        print(f"[OK] API connection successful")
+                        if server_version:
+                            print(f"     Ludus Server: {server_version}")
+                    else:
+                        error_msg = result.stderr.strip() or result.stdout.strip()
+                        if "401" in error_msg or "unauthorized" in error_msg.lower() or "No API key" in error_msg:
+                            print("[ERR] API connection failed: Invalid API key")
+                        elif "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                            print(f"[ERR] Could not connect to Ludus server")
+                        else:
+                            print(f"[ERR] API test failed: {error_msg[:100]}")
+                except subprocess.TimeoutExpired:
+                    print("[ERR] Connection timed out - check if Ludus server is reachable")
+                except Exception as e:
+                    print(f"[ERR] Error testing with ludus CLI: {e}")
+            else:
+                # Fallback to httpx if ludus CLI not available
+                try:
+                    import httpx
+                    import asyncio
+
+                    async def test_connection():
+                        # Ludus typically uses self-signed certs - disable SSL verify by default
+                        ssl_verify_str = config.get("LUDUS_SSL_VERIFY", "false")
+                        ssl_verify = ssl_verify_str.lower() not in ("false", "0", "no", "")
+
+                        async with httpx.AsyncClient(timeout=10.0, verify=ssl_verify) as client:
+                            try:
+                                response = await client.get(
+                                    f"{config['LUDUS_API_URL']}/api/user/whoami",
+                                    headers={"X-API-KEY": config['LUDUS_API_KEY']}
+                                )
+                                if response.status_code == 200:
+                                    print("[OK] API connection successful")
+                                    return True
+                                elif response.status_code == 401:
+                                    print("[ERR] API connection failed: Invalid API key")
+                                    return False
+                                else:
+                                    print(f"[WARN] API returned status {response.status_code}")
+                                    return False
+                            except httpx.ConnectError as e:
+                                print(f"[ERR] Could not connect to API: {e}")
                                 return False
-                            elif response.status_code == 404:
-                                # API might not have /api/ranges, but connection works
-                                print("[OK] API connection successful (endpoint may vary)")
-                                return True
-                            else:
-                                print(f"⚠ API returned status {response.status_code}")
+                            except httpx.ConnectTimeout:
+                                print("[ERR] Connection timed out - check if Ludus server is reachable")
                                 return False
-                        except httpx.ConnectError:
-                            print("⚠ Could not connect to API (this may be normal if API is not running)")
-                            return False
-                        except httpx.RequestError as e:
-                            print(f"⚠ Connection error: {e}")
-                            return False
-                
-                asyncio.run(test_connection())
-            except ImportError:
-                print("⚠ Cannot test API connection (httpx not available)")
-            except Exception as e:
-                print(f"⚠ Error testing API connection: {e}")
+                            except Exception as e:
+                                print(f"[ERR] Connection error: {type(e).__name__}: {e}")
+                                return False
+
+                    asyncio.run(test_connection())
+                except ImportError:
+                    print("[WARN] Cannot test API connection (ludus CLI and httpx not available)")
+                except Exception as e:
+                    print(f"[ERR] Error testing API connection: {e}")
         else:
-            print("⚠ Skipping API test (URL or key not provided)")
-        
+            print("[WARN] Skipping API test (URL or key not provided)")
+
         # Test LLM
         if config.get("LLM_MODEL_PATH"):
             model_path = Path(config["LLM_MODEL_PATH"])
@@ -360,28 +408,43 @@ def interactive_setup() -> int:
                     if is_valid:
                         print(f"[OK] {msg}")
                     else:
-                        print(f"⚠ {msg}")
+                        print(f"[WARN] {msg}")
                 except Exception:
                     pass  # Skip verification if installer not available
             else:
-                print("⚠ LLM model file not found")
+                print("[WARN] LLM model file not found")
                 print("   You can install it later with:")
                 print(f"   python3 scripts/install_model.py {config['LLM_MODEL_PATH']}")
         elif config.get("LLM_PROVIDER_TYPE") in ["openai", "anthropic", "google", "ollama"]:
             print("[OK] LLM configured (cloud provider, no local model needed)")
         else:
-            print("ℹ LLM not configured (will use fallback parser)")
-    
+            print("[INFO] LLM not configured (will use fallback parser)")
+
     print()
     print("=" * 60)
     print("Setup complete!")
     print("=" * 60)
-    
+
     if save_to_file:
-        print(f"\nConfiguration saved to: {Path('.env').absolute()}")
-        print("You can now run: ludus-fastmcp")
+        local_env = Path('.env').absolute()
+        print(f"\nConfiguration saved to: {local_env}")
+
+        # Also copy to ~/.ludus-fastmcp/.env for global access
+        global_config_dir = Path.home() / ".ludus-fastmcp"
+        global_env = global_config_dir / ".env"
+        try:
+            global_config_dir.mkdir(parents=True, exist_ok=True)
+            # Copy the .env content to global location
+            import shutil
+            shutil.copy2(local_env, global_env)
+            print(f"Configuration also saved to: {global_env}")
+            print("\nThe MCP server will now find your configuration from any directory.")
+        except Exception as e:
+            print(f"\n[WARN] Could not copy to {global_env}: {e}")
+            print("You may need to manually copy the .env file or set environment variables.")
+
+        print("\nYou can now run: ludus-fastmcp")
     else:
         print("\nRemember to set the environment variables before running ludus-fastmcp")
-    
-    return 0
 
+    return 0

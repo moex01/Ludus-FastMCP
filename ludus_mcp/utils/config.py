@@ -1,13 +1,31 @@
 """Configuration management using Pydantic Settings."""
 
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _get_env_files() -> tuple[str, ...]:
+    """Get list of .env files to load, in order of priority (later overrides earlier)."""
+    env_files = []
+
+    # 1. User's home config directory (lowest priority)
+    home_env = Path.home() / ".ludus-fastmcp" / ".env"
+    if home_env.exists():
+        env_files.append(str(home_env))
+
+    # 2. Current working directory (highest priority)
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.exists():
+        env_files.append(str(cwd_env))
+
+    return tuple(env_files) if env_files else (".env",)
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_get_env_files(),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -30,7 +48,7 @@ class Settings(BaseSettings):
 
     # MCP Server Configuration
     mcp_server_name: str = "ludus-fastmcp"
-    mcp_server_version: str = "0.1.0"
+    mcp_server_version: str = "1.0.0"
 
     # Logging
     log_level: str = "INFO"
@@ -45,4 +63,3 @@ def get_settings() -> Settings:
     if _settings is None:
         _settings = Settings()
     return _settings
-
