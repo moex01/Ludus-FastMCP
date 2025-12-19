@@ -124,4 +124,5 @@ This software is intended for authorized security testing, educational purposes,
 
 ## Acknowledgments
 
-Built with [Ludus](https://github.com/badsectorlabs/ludus) by Bad Sector Labs, [FastMCP](https://gofastmcp.com), and the Model Context Protocol community.
+- [Ludus](https://github.com/badsectorlabs/ludus) by Bad Sector Labs
+- [FastMCP](https://gofastmcp.com), and the Model Context Protocol community.
